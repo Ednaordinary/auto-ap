@@ -38,7 +38,9 @@ def signal_strength(base, ap):
 
 print("starting data build")
 
-all_data = [None]*3
+samples = 1
+
+all_data = [None]*samples
 
 def build_data(idx):
     aps = [AP(x) for x in range(50)]
@@ -62,7 +64,7 @@ def build_data(idx):
     all_data[idx] = (data, bases, aps)
 
 print("building test data")
-data_threads = [threading.Thread(target=build_data, args=[x]) for x in range(3)]
+data_threads = [threading.Thread(target=build_data, args=[x]) for x in range(samples)]
 [x.start() for x in data_threads]
 [x.join() for x in data_threads]
 print("data", all_data)
@@ -87,7 +89,7 @@ def loss_runner(holder, d_full, **vals):
     
 
 def get_loss(**vals) -> float:
-    print("running loss")
+    print("running loss with", vals)
     threads = []
     all_loss = [ThreadHolder() for x in range(len(all_data))]
     for idx, data_pack in enumerate(all_data):
@@ -123,7 +125,7 @@ class FloatTriSearch:
         self.val = val
         self.f_depth = f_depth
         self.bound = bound
-    def expand_tri_search(self, low, high, m_loss, vars, depth):
+    def expand_tri_search(self, low, m_loss, high, vars, depth):
         if depth > self.f_depth:
             return (low + (high - low) / 2, m_loss)
         l_loss = get_loss(**vars, **{self.val: low})
@@ -132,7 +134,7 @@ class FloatTriSearch:
         delta = (high - low) / 4
         if min_loss == l_loss:
             l_delta = low - delta
-            if self.bound and l_delta < self.low: l_delta = 0
+            if self.bound and l_delta < self.low: l_delta = self.low
             return self.expand_tri_search(l_delta, l_loss, low + delta, vars, depth+1)
         elif min_loss == h_loss:
             return self.expand_tri_search(high - delta, h_loss, high + delta, vars, depth+1)
@@ -142,7 +144,7 @@ class FloatTriSearch:
     def search(self, vars):
         mid = (self.low + (self.high - self.low) / 2)
         m_loss = get_loss(**vars, **{self.val: mid})
-        return self.expand_tri_search(self.low, self.high, m_loss, vars, 0)
+        return self.expand_tri_search(self.low, m_loss, self.high, vars, 0)
 
 class StringSearch:
     def __init__(self, val, *strings):
@@ -153,7 +155,7 @@ class StringSearch:
         val = None
         for i in self.strings:
             loss = get_loss(**vars, **{self.val: i})
-            if loss == None or i < min_loss:
+            if min_loss == None or loss < min_loss:
                 min_loss = loss
                 val = i
         return val, min_loss
@@ -172,7 +174,7 @@ class BoolSearch:
 set_vars = {
     "n_epochs": 50,
     "init": "pca",
-    "verbose": True,
+    "verbose": False,
 }
 
 opt_default_vars = {
@@ -188,7 +190,7 @@ opt_default_vars = {
 }
 
 opt_vars = {
-    "n_neighbors": IntAllSearch(1, 20, "n_neighbors"),
+    "n_neighbors": IntAllSearch(2, 20, "n_neighbors"),
     "learning_rate": FloatTriSearch(0.0, 1.0, "learning_rate", 5, True),
     "min_dist": FloatTriSearch(0.0, 0.2, "min_dist", 5, True),
     "spread": FloatTriSearch(0.2, 1.0, "spread", 5, True),

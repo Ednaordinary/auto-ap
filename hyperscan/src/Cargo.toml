@@ -1,0 +1,10 @@
+[package]
+name = "hyperscan"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+neli-wifi = "0.6.1"
+netlink-rust = "0.1.1"
+netlink_wi = "0.8.0"
+nl80211-rs = "0.1.1"

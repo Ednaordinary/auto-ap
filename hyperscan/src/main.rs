@@ -1,45 +1,37 @@
+use std::process::Command;
+use std::sync::LazyLock;
 use std::thread;
 use std::time::Duration;
 
-use netlink_rust::{Protocol, Socket, generic};
-use netlink_wi::{self, NlSocket};
-use nl80211_rs::get_wireless_interfaces;
+use regex::{Regex, RegexBuilder};
 
-fn scan_loop() {
-    //let mut control = Socket::new(Protocol::Generic).unwrap();
-    //let family = generic::Family::from_name(&mut control, "nl80211").unwrap();
-    //let devs = get_wireless_interfaces(&mut control, &family).unwrap();
-    // assume one scanner <:
-    //let dev = devs.iter().nth(0).unwrap();
-    //thread::sleep(Duration::from_millis(500));
-    //let scan_res = dev.trigger_scan(&mut control);
-    //dev.get_survey(&mut control).unwrap();
-    //dev.set_channel(&mut control, 1).unwrap();
-    //dev.set_channel(&mut control, 6).unwrap();
-    //dev.set_channel(&mut control, 11).unwrap();
-    let socket = NlSocket::connect().unwrap();
-    //for interface in socket.list_interfaces().unwrap() {
-    //    println!("Interface {} {}", interface.interface_index, interface.name);
-    //}
-    let interface = socket
-        .list_interfaces()
-        .unwrap()
-        .into_iter()
-        .filter(|x| x.name == "wlan0")
-        .nth(0)
-        .unwrap();
-    //let interface = socket.get_interface(0);
-    //println!("{} {}", interface.name, interface.frequency.unwrap());
-    // 2412, 2437, 2462
-    let config = netlink_wi::ChannelConfig::new(
-        interface.interface_index,
-        2412,
-        netlink_wi::interface::ChannelWidth::Width20,
-    );
-    socket.set_channel(config).unwrap();
-    println!("{} {}", interface.name, interface.frequency.unwrap());
+#[derive(Default)]
+pub struct Wifi {
+    pub mac: String,
+    pub ssid: String,
+    pub channel: String,
+    pub signal: String,
+    pub seen: String,
+}
+
+
+fn parse_scan(lines: &str) -> regex::Captures {
+    static RE: LazyLock<Regex> = LazyLock::new(|| {
+        RegexBuilder::new(r"BSS (?P<mac>.{17}?)\(.*?freq: (?P<freq>.+?)\n.*?signal: (?P<signal>.+?) .*?last seen: (?P<seen>.*?)\n.*?SSID: (?P<ssid>.*?)\n").dot_matches_new_line(true).build().unwrap()
+    });
+    let caps = RE.captures_iter(lines);
+    let wifis: Vec<Wifi> = caps.map(|x| Wifi {x["mac"], x["ssid"], x["channel"], x["signal"], x["seen"]}).collect();
+}
+
+fn scan(interface: &str, freqs: Vec<u32>) {
+    let cmd = vec!["dev", &interface, "scan", "freq"];
+    let freq_list: Vec<String> = freqs.iter().map(|x| x.to_string()).collect();
+    let freq_list: Vec<&str> = freq_list.iter().map(|x| x.as_ref()).collect();
+    let cmd = [cmd, freq_list].concat();
+    let scan_out = Command::new("./iw").args(cmd).output().unwrap();
+    parse_scan(String::from_utf8_lossy(&scan_out.stdout).as_ref());
 }
 
 fn main() {
-    scan_loop();
+    scan("wlan0", vec![2412, 2437, 2462]);
 }
